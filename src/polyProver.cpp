@@ -54,7 +54,31 @@ namespace hyrax_bls12_381 {
         }
     }
 
+    Fr* compute_chi_table(Fr *r, int n)
+    {
+        Fr* table[50];
+        for(int i=0;i<n;i++)
+            table[i]=new Fr[1<<(i+1)]; // table[0] 2
+        table[0][0]=1-r[0];
+        table[0][1]=r[0];
 
+        Fr tr[40];
+        for(int i=0;i<n;i++)
+            tr[i]=1-r[i];
+        int CF=0;
+        for(int i=1;i<n;i++)
+        {
+            Fr TR=1-r[i], R=r[i];
+            for(int j=0;j<(1<<i);j++)
+                table[i][j]=table[i-1][j]*TR;
+            
+            for(int j=0;j<(1<<i);j++)
+                table[i][j+(1<<i)]=table[i-1][j]*R;
+        }
+        for(int i=0;i<n-1;i++)
+            delete []table[i];
+        return table[n-1];
+    }
     polyProver::polyProver(const vector<int> &_Zi, const vector<G1> &_gens) :
             Zi(_Zi),gens(_gens) 
     {
@@ -137,6 +161,43 @@ namespace hyrax_bls12_381 {
         cerr<<"prover evaluate time: "<<tmp_timer1.elapse_sec()<<" "<<tmp_timer2.elapse_sec()<<endl;
         return res;
     }
+
+    Fr polyProver::fast_evaluate(const vector<Fr> &x) 
+    {
+        Fr ans=0;
+        int B=bit_length/2;
+        auto table=compute_chi_table((Fr*)x.data(),bit_length-B);
+        Fr *ans_=new Fr[1<<B];
+        for(int i=0;i<(1<<B);i++)
+            ans_[i]=0;
+        for(int k = 0; k < Zi.size(); k++)
+        {
+            Fr tmp;
+            int t=k>>(bit_length-B);
+            int remain=k&((1<<(bit_length-B))-1);
+            assert (remain+(t<<(bit_length-B))==k);
+            if (Zi[k]>0)
+            {
+                Fr::mulSmall(tmp,table[remain],Zi[k]);
+                ans_[t]+=tmp;
+            }
+            else
+            {
+                Fr::mulSmall(tmp,table[remain],-Zi[k]);
+                ans_[t]-=tmp;
+            }
+        }
+        Fr* tab=compute_chi_table((Fr*)x.data()+bit_length-B,B);
+        for(int k=0;k<(1<<B);k++)   // can change to dot product
+        { 
+            if(!ans_[k].isZero())
+                ans+=ans_[k]*tab[k];
+        }
+        delete []ans_;
+        return ans;
+    }
+
+
 
     double polyProver::getPT() const {
         return pt.elapse_sec();

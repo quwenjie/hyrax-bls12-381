@@ -20,6 +20,7 @@ namespace hyrax_bls12_381 {
         polyProver(const vector<Fr> &_Z,const vector<G1> &_gens);
         polyProver(const vector<int> &_Zi, const vector<G1> &_gens);
         void commit(vector<G1>& v);
+        Fr fast_evaluate(const vector<Fr> &x);
         vector<G1> commit();
         Fr evaluate(const vector<Fr> &x);
 
