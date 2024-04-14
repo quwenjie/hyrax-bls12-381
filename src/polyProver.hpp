@@ -17,10 +17,10 @@ using namespace mcl::bn;
 namespace hyrax_bls12_381 {
     class polyProver {
     public:
-        polyProver(const vector<Fr> &_Z, const vector<G1> &_gens);
-
+        polyProver(const vector<Fr> &_Z,const vector<G1> &_gens);
+        polyProver(const vector<int> &_Zi, const vector<G1> &_gens);
+        void commit(vector<G1>& v);
         vector<G1> commit();
-
         Fr evaluate(const vector<Fr> &x);
 
         double getPT() const;
@@ -44,6 +44,7 @@ namespace hyrax_bls12_381 {
         vector<G1> comm_Z;
 
         vector<Fr> Z, L, R, t;
+        vector<int> Zi;
         vector<Fr> RZ;
         Fr scale;
         u8 bit_length;

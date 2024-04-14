@@ -5,7 +5,10 @@
 #include "utils.hpp"
 #include <vector>
 #include <cmath>
+#include "timer.hpp"
 using std::vector;
+#include <iostream>
+using namespace std;
 
 namespace hyrax_bls12_381 {
     u8 myLog2(u64 x) {
@@ -33,7 +36,8 @@ namespace hyrax_bls12_381 {
         u64 first_half = v.size() >> 1;
         u64 second_half = v.size() - first_half;
         u64 mask = (1ULL << first_half) - 1;
-
+        timer A,B;
+        A.start();
         beta_f.resize(1ULL << first_half);
         beta_f[0] = Fr::one();
         for (u64 i = 0; i < first_half; ++i) {
@@ -53,11 +57,14 @@ namespace hyrax_bls12_381 {
                 beta_s[j] = beta_s[j] - tmp;
             }
         }
-
+        A.stop();
+        B.start();
         u64 size = 1ULL << v.size();
         V.resize(size);
         for (u64 i = 0; i < size; ++i)
             V[i] = beta_f[i & mask] * beta_s[i >> first_half];
+        B.stop();
+        cout<<A.elapse_sec()<<" "<<B.elapse_sec()<<endl;
         return V;
     }
 }
