@@ -55,6 +55,7 @@ namespace hyrax_bls12_381 {
         vector<G1> bullet_g;
         vector<Fr> bullet_a;
     };
+    void MUL_VEC_bucket(G1& ret,G1* vec1,int* vec2,int n);
 }
 
 

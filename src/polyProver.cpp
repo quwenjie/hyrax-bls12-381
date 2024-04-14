@@ -53,7 +53,28 @@ namespace hyrax_bls12_381 {
             ret=ret+W[j]*(1<<j);
         }
     }
+    void MUL_VEC_bucket_stride(G1& ret,G1* vec1,int* vec2,int n,int vec2stride)
+    {
+        G1 tmp1,tmp2;
+        G1 tmp_1,tmp_2;
+        G1 W[16];
+        for(int i=0;i<16;i++)
+            W[i].clear();
 
+        for(int i=0;i<n;i++)
+        {
+            //assert(vec2[i]<=255 && vec2[i]>=0);
+            for(int j=0;j<8;j++)
+            {
+                if(vec2[vec2stride*i]&(1<<j))
+                    W[j]+=vec1[i];    
+            }
+        }
+        for(int j=0;j<8;j++)
+        {
+            ret=ret+W[j]*(1<<j);
+        }
+    }
     Fr* compute_chi_table(Fr *r, int n)
     {
         Fr* table[50];
@@ -225,13 +246,39 @@ namespace hyrax_bls12_381 {
         {
             for (u64 j = 0; j < rsize_ex; ++j)
                 for (u64 i = 0; i < lsize_ex; ++i)
+                {
                     RZ[i] = !j ? R[j] * Z[j * lsize_ex + i] : RZ[i] + R[j] * Z[j * lsize_ex + i];
+                }
         }
         else
         {
-            for (u64 j = 0; j < rsize_ex; ++j)
-                for (u64 i = 0; i < lsize_ex; ++i)
-                    RZ[i] = !j ? R[j] * Zi[j * lsize_ex + i] : RZ[i] + R[j] * Zi[j * lsize_ex + i];
+            for (int i = 0; i < lsize_ex; ++i)
+            {
+                vector<Fr> bucket;
+                bucket.resize(512,zero);
+                
+                for (int j = 0; j < rsize_ex; ++j)
+                    bucket[Zi[j*lsize_ex+i]+255]+=R[j];
+
+                for (int j = -255; j <= 255; ++j)
+                {
+                    Fr tmp;
+                    if(j==0)
+                        continue;
+                    if(bucket[j+255].isZero())
+                        continue;
+                    if(j>0)
+                    {
+                        Fr::mulSmall(tmp,bucket[j+255],j);
+                        RZ[i] +=tmp;
+                    }
+                    else
+                    {
+                        Fr::mulSmall(tmp,bucket[j+255],-j);
+                        RZ[i] -=tmp;
+                    }
+                }
+            }   
         }
         bullet_g = gens;
         bullet_a = RZ;
