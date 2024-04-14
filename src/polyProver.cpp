@@ -5,13 +5,57 @@
 #include "polyProver.hpp"
 #include <mcl/bls12_381.hpp>
 #include <iostream>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <thread>         // std::thread
 using namespace std;
-
 #define G1_SIZE (Fp::getByteSize())
 #define Fr_SIZE (Fr::getByteSize())
 
 using std::vector;
 namespace hyrax_bls12_381 {
+
+template <typename T>
+class ThreadSafeQueue {
+public:
+    ThreadSafeQueue() {}
+
+    void Push(T value) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        queue_.push(value);
+        lock.unlock();
+        condition_variable_.notify_one();
+    }
+
+    bool TryPop(T& value) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (queue_.empty()) {
+            return false;
+        }
+        value = queue_.front();
+        queue_.pop();
+        return true;
+    }
+
+    void WaitPop(T& value) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        condition_variable_.wait(lock, [this] { return !queue_.empty(); });
+        value = queue_.front();
+        queue_.pop();
+    }
+
+    bool Empty() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return queue_.empty();
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::queue<T> queue_;
+    std::condition_variable condition_variable_;
+};
+
     void MUL_VEC(G1& ret,G1* vec1,int* vec2,int n)
     {
         
@@ -51,6 +95,77 @@ namespace hyrax_bls12_381 {
         for(int j=0;j<8;j++)
         {
             ret=ret+W[j]*(1<<j);
+        }
+    }
+    ThreadSafeQueue<int> thq;
+    void worker(int tid, vector<G1>& comm_Z, vector<G1>& gens, vector<int>& Zi,int lsize)
+    {
+        int idx;
+        while (true)
+        {
+            bool ret=thq.TryPop(idx);
+            if(ret==false)
+                return;
+            MUL_VEC_bucket(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize);
+        }
+    }
+    void worker_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<int>& Zi,Fr*& ans_)
+    {
+        Fr tmp;
+        int idx;
+        while (true)
+        {
+            bool ret=thq.TryPop(idx);
+            if(ret==false)
+                return;
+            for(int remain=0;remain<(1<<(bit_length-B));remain++)
+            {
+                if (Zi[remain+(idx<<(bit_length-B))]>0)
+                {
+                    Fr::mulSmall(tmp,tab[remain],Zi[remain+(idx<<(bit_length-B))]);
+                    ans_[idx]+=tmp;
+                }
+                else
+                {
+                    Fr::mulSmall(tmp,tab[remain],-Zi[remain+(idx<<(bit_length-B))]);
+                    ans_[idx]-=tmp;
+                }
+            }
+        }
+            
+    }
+    void worker_verifier(int tid, int lsize_ex,int rsize_ex,vector<int>& Zi,vector<Fr>& R,vector<Fr>& RZ)
+    {
+        int idx;
+        while (true)
+        {
+            bool ret=thq.TryPop(idx);
+            if(ret==false)
+                return;
+            vector<Fr> bucket;
+            bucket.resize(512,Fr(0));
+                    
+            for (int j = 0; j < rsize_ex; ++j)
+                bucket[Zi[j*lsize_ex+idx]+255]+=R[j];
+
+            for (int j = -255; j <= 255; ++j)
+            {
+                Fr tmp;
+                if(j==0)
+                    continue;
+                if(bucket[j+255].isZero())
+                    continue;
+                if(j>0)
+                {
+                    Fr::mulSmall(tmp,bucket[j+255],j);
+                    RZ[idx] +=tmp;
+                }
+                else
+                {
+                    Fr::mulSmall(tmp,bucket[j+255],-j);
+                    RZ[idx] -=tmp;
+                }
+            }
         }
     }
     void MUL_VEC_bucket_stride(G1& ret,G1* vec1,int* vec2,int n,int vec2stride)
@@ -148,10 +263,16 @@ namespace hyrax_bls12_381 {
         }
         else
         {
+            const int thread_num=8;
             for (u64 i = 0; i < rsize; ++i)
+                thq.Push(i);
+            for(int i=0;i<thread_num;i++)
             {
-                MUL_VEC_bucket(comm_Z[i], gens.data(), Zi.data() + i * lsize, lsize);
+                thread t(worker,i,std::ref(comm_Z),std::ref(gens),std::ref(Zi),lsize); 
+                t.detach();
             }
+            while(!thq.Empty())
+                this_thread::sleep_for (std::chrono::microseconds(20));
         }
         
         tmp_timer2.stop();
@@ -191,6 +312,17 @@ namespace hyrax_bls12_381 {
         Fr *ans_=new Fr[1<<B];
         for(int i=0;i<(1<<B);i++)
             ans_[i]=0;
+        const int thread_num=8;
+        for (u64 i = 0; i < (1<<B); ++i)
+            thq.Push(i);
+        for(int i=0;i<thread_num;i++)
+        {
+            thread t(worker_parallel_eval,i,bit_length,B,std::ref(table),std::ref(Zi),std::ref(ans_)); 
+            t.detach();
+        }
+        while(!thq.Empty())
+            this_thread::sleep_for (std::chrono::microseconds(20));
+        /*
         for(int k = 0; k < Zi.size(); k++)
         {
             Fr tmp;
@@ -208,6 +340,7 @@ namespace hyrax_bls12_381 {
                 ans_[t]-=tmp;
             }
         }
+        */
         Fr* tab=compute_chi_table((Fr*)x.data()+bit_length-B,B);
         for(int k=0;k<(1<<B);k++)   // can change to dot product
         { 
@@ -252,34 +385,19 @@ namespace hyrax_bls12_381 {
         }
         else
         {
-            for (int i = 0; i < lsize_ex; ++i)
+            const int thread_num=8;
+            for (u64 i = 0; i < lsize_ex; ++i)
+                thq.Push(i);
+            for(int i=0;i<thread_num;i++)
             {
-                vector<Fr> bucket;
-                bucket.resize(512,zero);
-                
-                for (int j = 0; j < rsize_ex; ++j)
-                    bucket[Zi[j*lsize_ex+i]+255]+=R[j];
-
-                for (int j = -255; j <= 255; ++j)
-                {
-                    Fr tmp;
-                    if(j==0)
-                        continue;
-                    if(bucket[j+255].isZero())
-                        continue;
-                    if(j>0)
-                    {
-                        Fr::mulSmall(tmp,bucket[j+255],j);
-                        RZ[i] +=tmp;
-                    }
-                    else
-                    {
-                        Fr::mulSmall(tmp,bucket[j+255],-j);
-                        RZ[i] -=tmp;
-                    }
-                }
-            }   
+                thread t(worker_verifier,i,lsize_ex,rsize_ex,std::ref(Zi),std::ref(R),std::ref(RZ)); 
+                t.detach();
+            }
+            while(!thq.Empty())
+                this_thread::sleep_for (std::chrono::microseconds(20));
         }
+        
+        
         bullet_g = gens;
         bullet_a = RZ;
         scale = Fr::one();
