@@ -13,7 +13,6 @@ namespace hyrax_bls12_381 {
         vt.start();
         comm_Z=p.commit();
         vt.stop();
-        //cout<<""<<vt.elapse_sec()<<endl;
         tmp_timer.stop();
         fprintf(stderr, "commit time: %.4f\n", tmp_timer.elapse_sec());
     }
