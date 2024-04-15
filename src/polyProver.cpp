@@ -5,6 +5,7 @@
 #include "polyProver.hpp"
 #include <mcl/bls12_381.hpp>
 #include <iostream>
+#include <bitset>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
@@ -75,6 +76,8 @@ private:
         }
         ret=tmp_1*16+tmp_2;
     }
+   
+
     void MUL_VEC_bucket(G1& ret,G1* vec1,int* vec2,int n)
     {
         G1 tmp1,tmp2;
@@ -82,19 +85,40 @@ private:
         G1 W[16];
         for(int i=0;i<16;i++)
             W[i].clear();
-
+        int cnt=0;
         for(int i=0;i<n;i++)
         {
             assert(vec2[i]<=255 && vec2[i]>=0);
             for(int j=0;j<8;j++)
             {
                 if(vec2[i]&(1<<j))
+                {
                     W[j]+=vec1[i];    
+                }
             }
         }
         for(int j=0;j<8;j++)
         {
             ret=ret+W[j]*(1<<j);
+        }
+    }
+    void MUL_VEC_bucket_eff(G1& ret,G1* vec1,int* vec2,int n)
+    {
+        G1 tmp2;
+        G1 W[256];
+        for(int i=0;i<256;i++)
+            W[i].clear();
+        for(int i=0;i<n;i++)
+        {
+            if(vec2[i]>0)
+                W[vec2[i]]+=vec1[i];
+            else
+                W[-vec2[i]]-=vec1[i];
+        }
+
+        for(int j=1;j<256;j++)
+        {
+            ret=ret+W[j]*j;
         }
     }
     ThreadSafeQueue<int> thq;
@@ -106,7 +130,7 @@ private:
             bool ret=thq.TryPop(idx);
             if(ret==false)
                 return;
-            MUL_VEC_bucket(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize);
+            MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize);
         }
     }
     void worker_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<int>& Zi,Fr*& ans_)
@@ -178,7 +202,6 @@ private:
 
         for(int i=0;i<n;i++)
         {
-            //assert(vec2[i]<=255 && vec2[i]>=0);
             for(int j=0;j<8;j++)
             {
                 if(vec2[vec2stride*i]&(1<<j))
