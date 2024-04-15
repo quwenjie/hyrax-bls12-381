@@ -14,9 +14,9 @@ using std::vector;
 namespace hyrax_bls12_381 {
     class polyVerifier {
     public:
-        polyVerifier(polyProver &_p, const vector<G1> &_gens);
+        polyVerifier(polyProver &_p, const vector<G1> &_gens,int prover_commit_th=4);
 
-        bool verify(const vector<Fr> &_x, const Fr &RZL);
+        bool verify(const vector<Fr> &_x, const Fr &RZL,int th=4);
 
         double getVT() { return vt.elapse_sec() - p.getPT(); }
     private:

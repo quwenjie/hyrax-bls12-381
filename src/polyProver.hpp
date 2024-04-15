@@ -70,14 +70,14 @@ private:
         void commit(vector<G1>& v);
         Fr parallel_evaluate(const vector<Fr> &x,int th_num=4, int dim1=0,int dim2=0) ;
         Fr fast_evaluate(const vector<Fr> &x,int th_num=4,int dim1=0,int dim2=0);
-        vector<G1> commit();
+        vector<G1> commit(int thread=4);
         Fr evaluate(const vector<Fr> &x);
 
         double getPT() const;
 
         double getPS() const;
 
-        void initBulletProve(const vector<Fr> &_lx, const vector<Fr> &_rx);
+        void initBulletProve(const vector<Fr> &_lx, const vector<Fr> &_rx,int th=4);
 
         void bulletProve(G1 &lcomm, G1 &rcomm, Fr &ly, Fr &ry);
 

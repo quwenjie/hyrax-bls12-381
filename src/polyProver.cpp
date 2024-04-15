@@ -250,7 +250,7 @@ namespace hyrax_bls12_381 {
         return comm_Z;
     }
     */
-    vector<G1> polyProver::commit() 
+    vector<G1> polyProver::commit(int thr) 
     {
         timer tmp_timer;
         
@@ -270,7 +270,7 @@ namespace hyrax_bls12_381 {
         }
         else
         {
-            const int thread_num=16;
+            const int thread_num=thr;
             for (u64 i = 0; i < rsize; ++i)
                 thq.Push(i);
             for(int i=0;i<thread_num;i++)
@@ -411,7 +411,7 @@ namespace hyrax_bls12_381 {
         return ps / 1024.0;
     }
 
-    void polyProver::initBulletProve(const vector<Fr> &_lx, const vector<Fr> &_rx) {
+    void polyProver::initBulletProve(const vector<Fr> &_lx, const vector<Fr> &_rx,int th) {
         Fr zero;
         zero.clear();
         pt.start();
@@ -435,7 +435,7 @@ namespace hyrax_bls12_381 {
         }
         else
         {
-            const int thread_num=16;
+            const int thread_num=th;
             for (u64 i = 0; i < lsize_ex; ++i)
                 thq.Push(i);
             for(int i=0;i<thread_num;i++)

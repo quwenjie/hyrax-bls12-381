@@ -7,17 +7,17 @@
 using namespace std;
 
 namespace hyrax_bls12_381 {
-    polyVerifier::polyVerifier(polyProver &_p, const vector<G1> &_gens) : p(_p), gens(_gens) {
+    polyVerifier::polyVerifier(polyProver &_p, const vector<G1> &_gens,int prover_commit_th) : p(_p), gens(_gens) {
         timer tmp_timer;
         tmp_timer.start();
         vt.start();
-        comm_Z=p.commit();
+        comm_Z=p.commit(prover_commit_th);
         vt.stop();
         tmp_timer.stop();
         fprintf(stderr, "commit time: %.4f\n", tmp_timer.elapse_sec());
     }
     
-    bool polyVerifier::verify(const vector<Fr> &_x, const Fr &RZL) {
+    bool polyVerifier::verify(const vector<Fr> &_x, const Fr &RZL,int th) {
         fprintf(stderr, "Poly commit for 2^%d input.\n", (int) _x.size());
         timer tmp_timer0,tmp_timer1,tmp_timer2,tmp_timer3,tmp_timer4;
         tmp_timer0.start();
@@ -25,7 +25,7 @@ namespace hyrax_bls12_381 {
         x = _x;
         split(lx, rx, x);tmp_timer0.stop();
         tmp_timer1.start();
-        p.initBulletProve(lx, rx);
+        p.initBulletProve(lx, rx,th);
         tmp_timer1.stop();
         tmp_timer2.start();    
         auto R = expand(rx);
