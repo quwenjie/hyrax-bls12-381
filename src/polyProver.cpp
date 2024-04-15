@@ -50,6 +50,10 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         return queue_.empty();
     }
+    int Size() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return queue_.size();
+    }
 
 private:
     mutable std::mutex mutex_;
@@ -121,7 +125,7 @@ private:
             ret=ret+W[j]*j;
         }
     }
-    ThreadSafeQueue<int> thq;
+    ThreadSafeQueue<int> thq,endq;
     void worker(int tid, vector<G1>& comm_Z, vector<G1>& gens, vector<int>& Zi,int lsize)
     {
         int idx;
@@ -133,7 +137,25 @@ private:
             MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize);
         }
     }
-    void worker_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<int>& Zi,Fr*& ans_)
+    void worker_field_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<Fr>& Z,Fr*& ans_,int upd=0)
+    {
+        Fr tmp;
+        int idx;
+        while (true)
+        {
+            bool ret=thq.TryPop(idx);
+            if(ret==false)
+                return;
+            if(upd==0)
+                upd=1<<(bit_length-B);
+            for(int remain=0;remain<upd;remain++)
+                ans_[idx]+=Z[remain+(idx<<(bit_length-B))]*tab[remain];
+            endq.Push(idx);
+        }
+            
+    }
+
+    void worker_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<int>& Zi,Fr*& ans_,int upd=0)
     {
         Fr tmp;
         int idx;
@@ -145,19 +167,17 @@ private:
             Fr sum[256];
             for(int i=0;i<256;i++)
                 sum[i]=0;
-            for(int remain=0;remain<(1<<(bit_length-B));remain++)
+            if(upd==0)
+                upd=1<<(bit_length-B);
+            for(int remain=0;remain<upd;remain++)
             {
                 if (Zi[remain+(idx<<(bit_length-B))]>0)
                 {
-                    //Fr::mulSmall(tmp,tab[remain],Zi[remain+(idx<<(bit_length-B))]);
                     sum[Zi[remain+(idx<<(bit_length-B))]]+=tab[remain];
-                    //ans_[idx]+=tmp;
                 }
                 else
                 {
-                    //Fr::mulSmall(tmp,tab[remain],-Zi[remain+(idx<<(bit_length-B))]);
                     sum[-Zi[remain+(idx<<(bit_length-B))]]-=tab[remain];
-                    //ans_[idx]-=tmp;
                 }
             }
             for(int i=1;i<256;i++)
@@ -165,6 +185,7 @@ private:
                 Fr::mulSmall(tmp,sum[i],i);
                 ans_[idx]+=tmp;
             }
+            endq.Push(idx);
         }
             
     }
@@ -289,7 +310,7 @@ private:
         }
         else
         {
-            const int thread_num=8;
+            const int thread_num=16;
             for (u64 i = 0; i < rsize; ++i)
                 thq.Push(i);
             for(int i=0;i<thread_num;i++)
@@ -298,7 +319,7 @@ private:
                 t.detach();
             }
             while(!thq.Empty())
-                this_thread::sleep_for (std::chrono::microseconds(20));
+                this_thread::sleep_for (std::chrono::microseconds(5));
         }
         
         tmp_timer2.stop();
@@ -329,46 +350,80 @@ private:
         cerr<<"prover evaluate time: "<<tmp_timer1.elapse_sec()<<" "<<tmp_timer2.elapse_sec()<<endl;
         return res;
     }
-
-    Fr polyProver::fast_evaluate(const vector<Fr> &x) 
+    Fr polyProver::parallel_evaluate(const vector<Fr> &x,int th_num, int dim1,int dim2) 
     {
         Fr ans=0;
         int B=bit_length/2;
         auto table=compute_chi_table((Fr*)x.data(),bit_length-B);
         Fr *ans_=new Fr[1<<B];
-        for(int i=0;i<(1<<B);i++)
+        if(dim1==0)
+            dim1=1<<B;
+        for(int i=0;i<dim1;i++)
             ans_[i]=0;
-        const int thread_num=8;
-        for (u64 i = 0; i < (1<<B); ++i)
+        const int thread_num=th_num;
+        for (u64 i = 0; i < dim1; ++i)
             thq.Push(i);
         for(int i=0;i<thread_num;i++)
         {
-            thread t(worker_parallel_eval,i,bit_length,B,std::ref(table),std::ref(Zi),std::ref(ans_)); 
+            thread t(worker_field_parallel_eval,i,bit_length,B,std::ref(table),std::ref(Z),std::ref(ans_),dim2); 
             t.detach();
         }
         while(!thq.Empty())
-            this_thread::sleep_for (std::chrono::microseconds(20));
-        /*
-        for(int k = 0; k < Zi.size(); k++)
         {
-            Fr tmp;
-            int t=k>>(bit_length-B);
-            int remain=k&((1<<(bit_length-B))-1);
-            assert (remain+(t<<(bit_length-B))==k);
-            if (Zi[k]>0)
-            {
-                Fr::mulSmall(tmp,table[remain],Zi[k]);
-                ans_[t]+=tmp;
-            }
-            else
-            {
-                Fr::mulSmall(tmp,table[remain],-Zi[k]);
-                ans_[t]-=tmp;
-            }
+            this_thread::sleep_for (std::chrono::microseconds(5));
         }
-        */
+        while(endq.Size()!=dim1)
+        {
+            this_thread::sleep_for (std::chrono::microseconds(5));
+        }
+        int tx;
+        while(!endq.Empty())
+            endq.TryPop(tx);
+        cout<<"synchronize"<<endl;
         Fr* tab=compute_chi_table((Fr*)x.data()+bit_length-B,B);
-        for(int k=0;k<(1<<B);k++)   // can change to dot product
+        for(int k=0;k<dim1;k++)   // can change to dot product
+        { 
+            if(!ans_[k].isZero())
+                ans+=ans_[k]*tab[k];
+        }
+        delete []ans_;
+        return ans;
+    }
+
+    Fr polyProver::fast_evaluate(const vector<Fr> &x,int th_num, int dim1,int dim2) 
+    {
+        Fr ans=0;
+        assert(x.size()==bit_length);
+        int B=bit_length/2;
+        auto table=compute_chi_table((Fr*)x.data(),bit_length-B);
+        Fr *ans_=new Fr[1<<B];
+        if(dim1==0)
+            dim1=1<<B;
+        for(int i=0;i<(1<<B);i++)
+            ans_[i]=0;
+        const int thread_num=th_num;
+        for (u64 i = 0; i < dim1; ++i)
+            thq.Push(i);
+        for(int i=0;i<thread_num;i++)
+        {
+            thread t(worker_parallel_eval,i,bit_length,B,std::ref(table),std::ref(Zi),std::ref(ans_),dim2); 
+            t.detach();
+        }
+        while(!thq.Empty())
+        {
+            this_thread::sleep_for (std::chrono::microseconds(10));
+        }
+        while(endq.Size()!=dim1)
+        {
+            this_thread::sleep_for (std::chrono::microseconds(10));
+        }
+        //int tx;
+        //while(!endq.Empty())
+        //    endq.TryPop(tx);
+        //cout<<"synchronize"<<endl;
+        Fr* tab=compute_chi_table((Fr*)x.data()+bit_length-B,B);
+        assert(ans==0);
+        for(int k=0;k<dim1;k++)   // can change to dot product
         { 
             if(!ans_[k].isZero())
                 ans+=ans_[k]*tab[k];
@@ -411,7 +466,7 @@ private:
         }
         else
         {
-            const int thread_num=8;
+            const int thread_num=16;
             for (u64 i = 0; i < lsize_ex; ++i)
                 thq.Push(i);
             for(int i=0;i<thread_num;i++)
@@ -420,7 +475,7 @@ private:
                 t.detach();
             }
             while(!thq.Empty())
-                this_thread::sleep_for (std::chrono::microseconds(20));
+                this_thread::sleep_for (std::chrono::microseconds(5));
         }
         
         
