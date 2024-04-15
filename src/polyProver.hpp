@@ -10,11 +10,59 @@
 #include "utils.hpp"
 #include "typedef.hpp"
 #include <vector>
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
 #include <mcl/bls12_381.hpp>
-using std::vector;
+
+using namespace std;
 using namespace mcl::bn;
 
 namespace hyrax_bls12_381 {
+    template <typename T>
+class ThreadSafeQueue {
+public:
+    ThreadSafeQueue() {}
+
+    void Push(T value) {
+        unique_lock<mutex> lock(mutex_);
+        queue_.push(value);
+        lock.unlock();
+        condition_variable_.notify_one();
+    }
+
+    bool TryPop(T& value) {
+        lock_guard<mutex> lock(mutex_);
+        if (queue_.empty()) {
+            return false;
+        }
+        value = queue_.front();
+        queue_.pop();
+        return true;
+    }
+
+    void WaitPop(T& value) {
+        unique_lock<mutex> lock(mutex_);
+        condition_variable_.wait(lock, [this] { return !queue_.empty(); });
+        value = queue_.front();
+        queue_.pop();
+    }
+
+    bool Empty() const {
+        lock_guard<mutex> lock(mutex_);
+        return queue_.empty();
+    }
+    int Size() const {
+        lock_guard<mutex> lock(mutex_);
+        return queue_.size();
+    }
+
+private:
+    mutable mutex mutex_;
+    queue<T> queue_;
+    condition_variable condition_variable_;
+};
     class polyProver {
     public:
         polyProver(const vector<Fr> &_Z,const vector<G1> &_gens);

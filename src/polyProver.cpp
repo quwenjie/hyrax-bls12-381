@@ -17,49 +17,7 @@ using namespace std;
 using std::vector;
 namespace hyrax_bls12_381 {
 
-template <typename T>
-class ThreadSafeQueue {
-public:
-    ThreadSafeQueue() {}
 
-    void Push(T value) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        queue_.push(value);
-        lock.unlock();
-        condition_variable_.notify_one();
-    }
-
-    bool TryPop(T& value) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (queue_.empty()) {
-            return false;
-        }
-        value = queue_.front();
-        queue_.pop();
-        return true;
-    }
-
-    void WaitPop(T& value) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        condition_variable_.wait(lock, [this] { return !queue_.empty(); });
-        value = queue_.front();
-        queue_.pop();
-    }
-
-    bool Empty() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return queue_.empty();
-    }
-    int Size() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return queue_.size();
-    }
-
-private:
-    mutable std::mutex mutex_;
-    std::queue<T> queue_;
-    std::condition_variable condition_variable_;
-};
 
     void MUL_VEC(G1& ret,G1* vec1,int* vec2,int n)
     {
@@ -135,6 +93,7 @@ private:
             if(ret==false)
                 return;
             MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize);
+            endq.Push(idx);
         }
     }
     void worker_field_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<Fr>& Z,Fr*& ans_,int upd=0)
@@ -149,7 +108,9 @@ private:
             if(upd==0)
                 upd=1<<(bit_length-B);
             for(int remain=0;remain<upd;remain++)
+            {
                 ans_[idx]+=Z[remain+(idx<<(bit_length-B))]*tab[remain];
+            }
             endq.Push(idx);
         }
             
@@ -212,8 +173,7 @@ private:
                 Fr::mulSmall(tmp,bucket[j+255]-bucket[255-j],j);
                 RZ[idx] +=tmp;
             }
-            //t.stop();
-            //cout<<"t2 "<<t.elapse_sec()<<endl;
+            endq.Push(idx);
         }
     }
     void MUL_VEC_bucket_stride(G1& ret,G1* vec1,int* vec2,int n,int vec2stride)
@@ -320,6 +280,15 @@ private:
             }
             while(!thq.Empty())
                 this_thread::sleep_for (std::chrono::microseconds(5));
+            while(endq.Size()!=rsize)
+            {
+                cout<<" sleep!"<<endl;
+                this_thread::sleep_for (std::chrono::microseconds(5));
+            }
+            int tx;
+            while(!endq.Empty())
+                endq.TryPop(tx);
+            cout<<"synchronize"<<endl;
         }
         
         tmp_timer2.stop();
@@ -417,10 +386,10 @@ private:
         {
             this_thread::sleep_for (std::chrono::microseconds(10));
         }
-        //int tx;
-        //while(!endq.Empty())
-        //    endq.TryPop(tx);
-        //cout<<"synchronize"<<endl;
+        int tx;
+        while(!endq.Empty())
+            endq.TryPop(tx);
+        cout<<"synchronize"<<endl;
         Fr* tab=compute_chi_table((Fr*)x.data()+bit_length-B,B);
         assert(ans==0);
         for(int k=0;k<dim1;k++)   // can change to dot product
@@ -476,6 +445,15 @@ private:
             }
             while(!thq.Empty())
                 this_thread::sleep_for (std::chrono::microseconds(5));
+            while(endq.Size()!=lsize_ex)
+            {
+                cout<<" sleep!"<<endl;
+                this_thread::sleep_for (std::chrono::microseconds(5));
+            }
+            int tx;
+            while(!endq.Empty())
+                endq.TryPop(tx);
+            cout<<"synchronize"<<endl;
         }
         
         
