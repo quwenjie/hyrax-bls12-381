@@ -142,18 +142,28 @@ private:
             bool ret=thq.TryPop(idx);
             if(ret==false)
                 return;
+            Fr sum[256];
+            for(int i=0;i<256;i++)
+                sum[i]=0;
             for(int remain=0;remain<(1<<(bit_length-B));remain++)
             {
                 if (Zi[remain+(idx<<(bit_length-B))]>0)
                 {
-                    Fr::mulSmall(tmp,tab[remain],Zi[remain+(idx<<(bit_length-B))]);
-                    ans_[idx]+=tmp;
+                    //Fr::mulSmall(tmp,tab[remain],Zi[remain+(idx<<(bit_length-B))]);
+                    sum[Zi[remain+(idx<<(bit_length-B))]]+=tab[remain];
+                    //ans_[idx]+=tmp;
                 }
                 else
                 {
-                    Fr::mulSmall(tmp,tab[remain],-Zi[remain+(idx<<(bit_length-B))]);
-                    ans_[idx]-=tmp;
+                    //Fr::mulSmall(tmp,tab[remain],-Zi[remain+(idx<<(bit_length-B))]);
+                    sum[-Zi[remain+(idx<<(bit_length-B))]]-=tab[remain];
+                    //ans_[idx]-=tmp;
                 }
+            }
+            for(int i=1;i<256;i++)
+            {
+                Fr::mulSmall(tmp,sum[i],i);
+                ans_[idx]+=tmp;
             }
         }
             
@@ -168,28 +178,21 @@ private:
                 return;
             vector<Fr> bucket;
             bucket.resize(512,Fr(0));
-                    
+            timer t;
+            //t.start();
             for (int j = 0; j < rsize_ex; ++j)
                 bucket[Zi[j*lsize_ex+idx]+255]+=R[j];
-
-            for (int j = -255; j <= 255; ++j)
+            //t.stop();
+            //cout<<"t1 "<<t.elapse_sec()<<endl;
+            //t.start();
+            for (int j  = 1; j <= 255; ++j)
             {
                 Fr tmp;
-                if(j==0)
-                    continue;
-                if(bucket[j+255].isZero())
-                    continue;
-                if(j>0)
-                {
-                    Fr::mulSmall(tmp,bucket[j+255],j);
-                    RZ[idx] +=tmp;
-                }
-                else
-                {
-                    Fr::mulSmall(tmp,bucket[j+255],-j);
-                    RZ[idx] -=tmp;
-                }
+                Fr::mulSmall(tmp,bucket[j+255]-bucket[255-j],j);
+                RZ[idx] +=tmp;
             }
+            //t.stop();
+            //cout<<"t2 "<<t.elapse_sec()<<endl;
         }
     }
     void MUL_VEC_bucket_stride(G1& ret,G1* vec1,int* vec2,int n,int vec2stride)

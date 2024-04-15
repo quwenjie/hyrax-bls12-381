@@ -19,13 +19,14 @@ namespace hyrax_bls12_381 {
     
     bool polyVerifier::verify(const vector<Fr> &_x, const Fr &RZL) {
         fprintf(stderr, "Poly commit for 2^%d input.\n", (int) _x.size());
-        timer tmp_timer,tmp_timer2,tmp_timer3,tmp_timer4;
-        tmp_timer.start();
+        timer tmp_timer0,tmp_timer1,tmp_timer2,tmp_timer3,tmp_timer4;
+        tmp_timer0.start();
         vt.start();
         x = _x;
-        split(lx, rx, x);
+        split(lx, rx, x);tmp_timer0.stop();
+        tmp_timer1.start();
         p.initBulletProve(lx, rx);
-        tmp_timer.stop();
+        tmp_timer1.stop();
         tmp_timer2.start();    
         auto R = expand(rx);
         assert(comm_Z.size() == R.size());
@@ -36,7 +37,7 @@ namespace hyrax_bls12_381 {
         tmp_timer4.start();    
         bool res = bulletVerify(gens, lx, comm_RZ, RZL);
         tmp_timer4.stop();
-        cerr<<"poly verifier "<<tmp_timer.elapse_sec()<<" "<<tmp_timer2.elapse_sec()<<" "<<tmp_timer3.elapse_sec()<<" "<<tmp_timer4.elapse_sec()<<endl;
+        cerr<<"poly verifier "<<tmp_timer0.elapse_sec()<<" "<<tmp_timer1.elapse_sec()<<" "<<tmp_timer2.elapse_sec()<<" "<<tmp_timer3.elapse_sec()<<" "<<tmp_timer4.elapse_sec()<<endl;
         vt.stop();
         return res;
     }
