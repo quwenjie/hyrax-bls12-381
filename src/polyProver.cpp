@@ -128,7 +128,7 @@ namespace hyrax_bls12_381 {
         }
         delete []W;
         t.stop();
-        cerr<<"thread time "<<t.elapse_sec()<<" "<<task<<" "<<lsize<<endl;
+        //cerr<<"thread time "<<t.elapse_sec()<<" "<<task<<" "<<lsize<<endl;
     }
     void worker_field_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<Fr>& Z,Fr*& ans_,int upd=0)
     {
@@ -365,7 +365,7 @@ namespace hyrax_bls12_381 {
                 res = !i ? Zi[i] * X[i] : res + Zi[i] * X[i];
         }
         tmp_timer2.stop();
-        cerr<<"prover evaluate time: "<<tmp_timer1.elapse_sec()<<" "<<tmp_timer2.elapse_sec()<<endl;
+        //cerr<<"prover evaluate time: "<<tmp_timer1.elapse_sec()<<" "<<tmp_timer2.elapse_sec()<<endl;
         return res;
     }
     Fr polyProver::parallel_evaluate(const vector<Fr> &x,int th_num, int dim1,int dim2) 
@@ -513,7 +513,6 @@ namespace hyrax_bls12_381 {
     }
 
     void polyProver::bulletProve(G1 &lcomm, G1 &rcomm, Fr &ly, Fr &ry) {
-        cout<<"START BLT PROVE "<<28<<" "<<bullet_a[28]<<" "<<L[28]<<endl;
         pt.start();
         assert(!(bullet_a.size() & 1));
         u64 hsize = bullet_a.size() >> 1;
