@@ -65,13 +65,14 @@ namespace hyrax_bls12_381 {
             ret=ret+W[j]*(1<<j);
         }
     }
-    void MUL_VEC_bucket_eff(G1& ret,G1* vec1,int* vec2,int n,G1*& W)
+    void MUL_VEC_bucket_eff(G1& ret,G1* vec1,int* vec2,int n,G1* W,bool* used)
     {
         ret.clear();
         G1 tmp2;
+        timer t,t2,t3;
+
         
-        memset(W,0,sizeof(G1)*COMM_MAX);
-        bool used[COMM_MAX]={0};
+        t2.start();
         for(int i=0;i<n;i++)
         {
             if(vec2[i]>0)
@@ -85,32 +86,49 @@ namespace hyrax_bls12_381 {
                 W[-vec2[i]]-=vec1[i];
             }
         }
-
+        t2.stop();
+        t3.start();
         for(int j=1;j<COMM_MAX;j++)
         {
             if(used[j])
-                ret=ret+W[j]*j;
+            {
+                ret+=W[j]*j;
+                W[j].clear();
+                used[j]=0;
+            }
         }
+        t3.stop();
+        //
+        //cerr<<t2.elapse_sec()<<" "<<t3.elapse_sec()<<endl;
         
     }
     ThreadSafeQueue<int> thq,endq;
     void worker_commit(int tid, vector<G1>& comm_Z, vector<G1>& gens, vector<int>& Zi,int lsize)
     {
         int idx;
+        timer t;
+        t.start();
         G1 *W=new G1[COMM_MAX];
+        bool used[COMM_MAX]={0};
+        memset(W,0,sizeof(G1)*COMM_MAX);
+        int task=0;
         while (true)
         {
             bool ret=thq.TryPop(idx);
             if(ret==false)
-                return;
-            vector<Fr> vv;
-            for(int i=0;i<lsize;i++)
-                vv.push_back(Zi[idx*lsize+i]);
+                break;
+            timer t;
+            t.start();
             //G1::mulVec(comm_Z[idx], gens.data(),vv.data(), lsize);
-            MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize,W);
+            MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize,W,used);
             endq.Push(idx);
+            ++task;
+            t.stop();
+           // cerr<<"task time "<<t.elapse_sec()<<endl;
         }
         delete []W;
+        t.stop();
+        cerr<<"thread time "<<t.elapse_sec()<<" "<<task<<" "<<lsize<<endl;
     }
     void worker_field_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<Fr>& Z,Fr*& ans_,int upd=0)
     {
