@@ -11,7 +11,8 @@ namespace hyrax_bls12_381 {
         timer tmp_timer;
         tmp_timer.start();
         vt.start();
-        cout<<prover_commit_th<<endl;
+        cerr<<"hello!"<<endl;
+        cerr<<prover_commit_th<<endl;
         comm_Z=p.commit(prover_commit_th);
         vt.stop();
         tmp_timer.stop();

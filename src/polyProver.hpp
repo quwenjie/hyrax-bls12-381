@@ -63,6 +63,7 @@ private:
     queue<T> queue_;
     condition_variable condition_variable_;
 };
+const int COMM_MAX=1e5;
     class polyProver {
     public:
         polyProver(const vector<Fr> &_Z,const vector<G1> &_gens);

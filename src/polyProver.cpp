@@ -19,7 +19,7 @@ using std::vector;
 namespace hyrax_bls12_381 {
 
 
-    const int MAX=1000;
+    
     void MUL_VEC(G1& ret,G1* vec1,int* vec2,int n)  // only usable for [0-255], deprecated
     {
         
@@ -49,7 +49,7 @@ namespace hyrax_bls12_381 {
         for(int i=0;i<16;i++)
             W[i].clear();
         int cnt=0;
-        const int NUM=log2(MAX)+1;
+        const int NUM=log2(COMM_MAX)+1;
         for(int i=0;i<n;i++)
         {
             for(int j=0;j<NUM;j++)
@@ -65,33 +65,39 @@ namespace hyrax_bls12_381 {
             ret=ret+W[j]*(1<<j);
         }
     }
-    void MUL_VEC_bucket_eff(G1& ret,G1* vec1,int* vec2,int n)
+    void MUL_VEC_bucket_eff(G1& ret,G1* vec1,int* vec2,int n,G1*& W)
     {
         ret.clear();
         G1 tmp2;
-        G1 W[MAX];
-        for(int i=0;i<MAX;i++)
-            W[i].clear();
-        bool used[MAX]={0};
+        
+        memset(W,0,sizeof(G1)*COMM_MAX);
+        bool used[COMM_MAX]={0};
         for(int i=0;i<n;i++)
         {
-            used[vec2[i]]=1;
             if(vec2[i]>0)
+            {
+                used[vec2[i]]=1;
                 W[vec2[i]]+=vec1[i];
+            }
             else
+            {
+                used[-vec2[i]]=1;
                 W[-vec2[i]]-=vec1[i];
+            }
         }
 
-        for(int j=1;j<MAX;j++)
+        for(int j=1;j<COMM_MAX;j++)
         {
             if(used[j])
                 ret=ret+W[j]*j;
         }
+        
     }
     ThreadSafeQueue<int> thq,endq;
     void worker_commit(int tid, vector<G1>& comm_Z, vector<G1>& gens, vector<int>& Zi,int lsize)
     {
         int idx;
+        G1 *W=new G1[COMM_MAX];
         while (true)
         {
             bool ret=thq.TryPop(idx);
@@ -101,9 +107,10 @@ namespace hyrax_bls12_381 {
             for(int i=0;i<lsize;i++)
                 vv.push_back(Zi[idx*lsize+i]);
             //G1::mulVec(comm_Z[idx], gens.data(),vv.data(), lsize);
-            MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize);
+            MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize,W);
             endq.Push(idx);
         }
+        delete []W;
     }
     void worker_field_parallel_eval(int tid,int bit_length,int B,Fr*& tab,vector<Fr>& Z,Fr*& ans_,int upd=0)
     {
@@ -134,8 +141,8 @@ namespace hyrax_bls12_381 {
             bool ret=thq.TryPop(idx);
             if(ret==false)
                 return;
-            Fr sum[MAX];
-            for(int i=0;i<MAX;i++)
+            Fr sum[COMM_MAX];
+            for(int i=0;i<COMM_MAX;i++)
                 sum[i]=0;
             if(upd==0)
                 upd=1<<(bit_length-B);
@@ -150,7 +157,7 @@ namespace hyrax_bls12_381 {
                     sum[-Zi[remain+(idx<<(bit_length-B))]]-=tab[remain];
                 }
             }
-            for(int i=1;i<MAX;i++)
+            for(int i=1;i<COMM_MAX;i++)
             {
                 if(!sum[i].isZero())
                 {
@@ -171,7 +178,7 @@ namespace hyrax_bls12_381 {
             if(ret==false)
                 return;
             vector<Fr> bucket;
-            bucket.resize(MAX+1,Fr(0));
+            bucket.resize(COMM_MAX+1,Fr(0));
             timer t;
             //t.start();
             for (int j = 0; j < rsize_ex; ++j)
@@ -182,7 +189,7 @@ namespace hyrax_bls12_381 {
                     bucket[-Zi[j*lsize_ex+idx]]-=R[j];
             }
             Fr tmp2;
-            for (int j  = 1; j <= MAX; ++j)
+            for (int j  = 1; j <= COMM_MAX; ++j)
             {
                 Fr tmp,tmp1;
                 if(j<=255)
@@ -249,6 +256,7 @@ namespace hyrax_bls12_381 {
     polyProver::polyProver(const vector<int> &_Zi, const vector<G1> &_gens) :
             Zi(_Zi),gens(_gens) 
     {
+        cerr<<"poly prover!"<<endl;
         bit_length = myLog2(_Zi.size());
         ps = 0;
     }
@@ -294,6 +302,7 @@ namespace hyrax_bls12_381 {
         }
         else
         {
+            cerr<<"start multi thread"<<endl;
             const int thread_num=thr;
             for (u64 i = 0; i < rsize; ++i)
                 thq.Push(i);
