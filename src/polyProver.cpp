@@ -73,7 +73,7 @@ namespace hyrax_bls12_381 {
 
         
         t2.start();
-        int cf=0,jf=0,ze=0;
+        int cf=0,jf=0,ze=0,last=-1;
         for(int i=0;i<n;i++)
         {
             if(vec2[i]>0)
@@ -82,7 +82,7 @@ namespace hyrax_bls12_381 {
                 W[vec2[i]]+=vec1[i];
                 ++jf;
             }
-            else
+            else if(vec2[i]<0)
             {
                 used[-vec2[i]]=1;
                 W[-vec2[i]]-=vec1[i];
@@ -101,11 +101,15 @@ namespace hyrax_bls12_381 {
                 W[j].clear();
                 used[j]=0;
                 ++cf;
+                last=j;
             }
         }
         t3.stop();
         //
-        //cerr<<t2.elapse_sec()<<" "<<t3.elapse_sec()<<" CF "<<cf<<" JF "<<jf<<" ze "<<ze<<endl;
+        //if(ze!=4096)
+        //    cerr<<t2.elapse_sec()<<" "<<t3.elapse_sec()<<" CF "<<cf<<" JF "<<jf<<" ze "<<ze<<endl;
+        //if(cf==1)
+         //   cerr<<"cto: "<<last<<endl;
         
     }
     ThreadSafeQueue<int> thq,endq;
