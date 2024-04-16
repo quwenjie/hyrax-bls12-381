@@ -73,18 +73,23 @@ namespace hyrax_bls12_381 {
 
         
         t2.start();
+        int cf=0,jf=0,ze=0;
         for(int i=0;i<n;i++)
         {
             if(vec2[i]>0)
             {
                 used[vec2[i]]=1;
                 W[vec2[i]]+=vec1[i];
+                ++jf;
             }
             else
             {
                 used[-vec2[i]]=1;
                 W[-vec2[i]]-=vec1[i];
+                ++jf;
             }
+            if(vec2[i]==0)
+                ze++;
         }
         t2.stop();
         t3.start();
@@ -95,11 +100,12 @@ namespace hyrax_bls12_381 {
                 ret+=W[j]*j;
                 W[j].clear();
                 used[j]=0;
+                ++cf;
             }
         }
         t3.stop();
         //
-        //cerr<<t2.elapse_sec()<<" "<<t3.elapse_sec()<<endl;
+        //cerr<<t2.elapse_sec()<<" "<<t3.elapse_sec()<<" CF "<<cf<<" JF "<<jf<<" ze "<<ze<<endl;
         
     }
     ThreadSafeQueue<int> thq,endq;
