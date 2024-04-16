@@ -67,6 +67,7 @@ namespace hyrax_bls12_381 {
     }
     void MUL_VEC_bucket_eff(G1& ret,G1* vec1,int* vec2,int n)
     {
+        ret.clear();
         G1 tmp2;
         G1 W[MAX];
         for(int i=0;i<MAX;i++)
@@ -88,7 +89,7 @@ namespace hyrax_bls12_381 {
         }
     }
     ThreadSafeQueue<int> thq,endq;
-    void worker(int tid, vector<G1>& comm_Z, vector<G1>& gens, vector<int>& Zi,int lsize)
+    void worker_commit(int tid, vector<G1>& comm_Z, vector<G1>& gens, vector<int>& Zi,int lsize)
     {
         int idx;
         while (true)
@@ -96,6 +97,10 @@ namespace hyrax_bls12_381 {
             bool ret=thq.TryPop(idx);
             if(ret==false)
                 return;
+            vector<Fr> vv;
+            for(int i=0;i<lsize;i++)
+                vv.push_back(Zi[idx*lsize+i]);
+            //G1::mulVec(comm_Z[idx], gens.data(),vv.data(), lsize);
             MUL_VEC_bucket_eff(comm_Z[idx], gens.data(), Zi.data() + idx * lsize, lsize);
             endq.Push(idx);
         }
@@ -176,15 +181,22 @@ namespace hyrax_bls12_381 {
                 else    
                     bucket[-Zi[j*lsize_ex+idx]]-=R[j];
             }
-            //t.stop();
-            //cout<<"t1 "<<t.elapse_sec()<<endl;
-            //t.start();
+            Fr tmp2;
             for (int j  = 1; j <= MAX; ++j)
             {
-                Fr tmp;
-                Fr::mulSmall(tmp,bucket[j],j);
-                RZ[idx] +=tmp;
+                Fr tmp,tmp1;
+                if(j<=255)
+                    Fr::mulSmall(tmp,bucket[j],j);
+                else
+                {
+                    //int a=j>>8,b=j&255;
+                    //Fr::mulSmall(tmp,bucket[j],b);
+                    //Fr::mulSmall(tmp1,bucket[j],a);
+                    //tmp2+=tmp1;
+                }
+                RZ[idx] +=j*bucket[j];//tmp;//tmp;
             }
+            //RZ[idx]+=tmp2*256;
             endq.Push(idx);
         }
     }
@@ -287,20 +299,18 @@ namespace hyrax_bls12_381 {
                 thq.Push(i);
             for(int i=0;i<thread_num;i++)
             {
-                thread t(worker,i,std::ref(comm_Z),std::ref(gens),std::ref(Zi),lsize); 
+                thread t(worker_commit,i,std::ref(comm_Z),std::ref(gens),std::ref(Zi),lsize); 
                 t.detach();
             }
             while(!thq.Empty())
                 this_thread::sleep_for (std::chrono::microseconds(5));
             while(endq.Size()!=rsize)
             {
-                cout<<" sleep!"<<endl;
                 this_thread::sleep_for (std::chrono::microseconds(5));
             }
             int tx;
             while(!endq.Empty())
                 endq.TryPop(tx);
-            cout<<"synchronize"<<endl;
         }
         
         tmp_timer2.stop();
@@ -476,17 +486,17 @@ namespace hyrax_bls12_381 {
     }
 
     void polyProver::bulletProve(G1 &lcomm, G1 &rcomm, Fr &ly, Fr &ry) {
+        cout<<"START BLT PROVE "<<28<<" "<<bullet_a[28]<<" "<<L[28]<<endl;
         pt.start();
         assert(!(bullet_a.size() & 1));
         u64 hsize = bullet_a.size() >> 1;
-
+        
         G1::mulVec(lcomm, bullet_g.data(), bullet_a.data(), hsize);
         G1::mulVec(rcomm, bullet_g.data() + hsize, bullet_a.data() + hsize, hsize);
 
         Fr tmp;
         Fr::inv(tmp, Fr::one() - t.back());
         scale *= tmp;
-
         for (int i = 0; i < hsize; ++i) {
             ly = !i ? bullet_a[i] * L[i] : ly + bullet_a[i] * L[i];
             ry = !i ? bullet_a[i + hsize] * L[i] : ry + bullet_a[i + hsize] * L[i];

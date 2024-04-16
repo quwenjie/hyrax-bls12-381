@@ -11,6 +11,7 @@ namespace hyrax_bls12_381 {
         timer tmp_timer;
         tmp_timer.start();
         vt.start();
+        cout<<prover_commit_th<<endl;
         comm_Z=p.commit(prover_commit_th);
         vt.stop();
         tmp_timer.stop();
@@ -47,13 +48,13 @@ namespace hyrax_bls12_381 {
         timer tmp_timer;
         tmp_timer.start();
         G1 lcomm, rcomm;
-        Fr ly, ry;
+        Fr ly(0), ry(0);
 
         assert(checkPow2(g.size()));
         auto logn = t.size();
         while (true) {
             p.bulletProve(lcomm, rcomm, ly, ry);
-
+            
             Fr randomness;
             randomness.setByCSPRNG();
             Fr irandomness;
@@ -67,6 +68,7 @@ namespace hyrax_bls12_381 {
             g.resize(hsize);
 
             comm = lcomm * randomness + comm + rcomm * irandomness;
+            cout<<"QX "<<y<<" "<<ly * (Fr::one() - t.back()) + ry * t.back()<<" ly:"<<ly<<" t.back"<<t.back()<<" ry "<<ry<<endl;
             if (y != ly * (Fr::one() - t.back()) + ry * t.back()) {
                 fprintf(stderr, "y incorrect at %d.\n", (int) (logn - t.size()));
                 return false;
