@@ -8,6 +8,7 @@
 #include <bitset>
 #include <queue>
 #include <mutex>
+#include <cmath>
 #include <condition_variable>
 #include <thread>         // std::thread
 using namespace std;
@@ -18,8 +19,8 @@ using std::vector;
 namespace hyrax_bls12_381 {
 
 
-
-    void MUL_VEC(G1& ret,G1* vec1,int* vec2,int n)
+    const int MAX=1000;
+    void MUL_VEC(G1& ret,G1* vec1,int* vec2,int n)  // only usable for [0-255], deprecated
     {
         
         G1 tmp1,tmp2;
@@ -40,7 +41,7 @@ namespace hyrax_bls12_381 {
     }
    
 
-    void MUL_VEC_bucket(G1& ret,G1* vec1,int* vec2,int n)
+    void MUL_VEC_bucket(G1& ret,G1* vec1,int* vec2,int n)  //pippenger algorithm
     {
         G1 tmp1,tmp2;
         G1 tmp_1,tmp_2;
@@ -48,10 +49,10 @@ namespace hyrax_bls12_381 {
         for(int i=0;i<16;i++)
             W[i].clear();
         int cnt=0;
+        const int NUM=log2(MAX)+1;
         for(int i=0;i<n;i++)
         {
-            assert(vec2[i]<=255 && vec2[i]>=0);
-            for(int j=0;j<8;j++)
+            for(int j=0;j<NUM;j++)
             {
                 if(vec2[i]&(1<<j))
                 {
@@ -59,7 +60,7 @@ namespace hyrax_bls12_381 {
                 }
             }
         }
-        for(int j=0;j<8;j++)
+        for(int j=0;j<NUM;j++)
         {
             ret=ret+W[j]*(1<<j);
         }
@@ -67,20 +68,23 @@ namespace hyrax_bls12_381 {
     void MUL_VEC_bucket_eff(G1& ret,G1* vec1,int* vec2,int n)
     {
         G1 tmp2;
-        G1 W[256];
-        for(int i=0;i<256;i++)
+        G1 W[MAX];
+        for(int i=0;i<MAX;i++)
             W[i].clear();
+        bool used[MAX]={0};
         for(int i=0;i<n;i++)
         {
+            used[vec2[i]]=1;
             if(vec2[i]>0)
                 W[vec2[i]]+=vec1[i];
             else
                 W[-vec2[i]]-=vec1[i];
         }
 
-        for(int j=1;j<256;j++)
+        for(int j=1;j<MAX;j++)
         {
-            ret=ret+W[j]*j;
+            if(used[j])
+                ret=ret+W[j]*j;
         }
     }
     ThreadSafeQueue<int> thq,endq;
@@ -125,8 +129,8 @@ namespace hyrax_bls12_381 {
             bool ret=thq.TryPop(idx);
             if(ret==false)
                 return;
-            Fr sum[256];
-            for(int i=0;i<256;i++)
+            Fr sum[MAX];
+            for(int i=0;i<MAX;i++)
                 sum[i]=0;
             if(upd==0)
                 upd=1<<(bit_length-B);
@@ -141,10 +145,13 @@ namespace hyrax_bls12_381 {
                     sum[-Zi[remain+(idx<<(bit_length-B))]]-=tab[remain];
                 }
             }
-            for(int i=1;i<256;i++)
+            for(int i=1;i<MAX;i++)
             {
-                Fr::mulSmall(tmp,sum[i],i);
-                ans_[idx]+=tmp;
+                if(!sum[i].isZero())
+                {
+                    Fr::mulSmall(tmp,sum[i],i);
+                    ans_[idx]+=tmp;
+                }
             }
             endq.Push(idx);
         }
@@ -159,18 +166,23 @@ namespace hyrax_bls12_381 {
             if(ret==false)
                 return;
             vector<Fr> bucket;
-            bucket.resize(512,Fr(0));
+            bucket.resize(MAX+1,Fr(0));
             timer t;
             //t.start();
             for (int j = 0; j < rsize_ex; ++j)
-                bucket[Zi[j*lsize_ex+idx]+255]+=R[j];
+            {
+                if(Zi[j*lsize_ex+idx]>0)
+                    bucket[Zi[j*lsize_ex+idx]]+=R[j];
+                else    
+                    bucket[-Zi[j*lsize_ex+idx]]-=R[j];
+            }
             //t.stop();
             //cout<<"t1 "<<t.elapse_sec()<<endl;
             //t.start();
-            for (int j  = 1; j <= 255; ++j)
+            for (int j  = 1; j <= MAX; ++j)
             {
                 Fr tmp;
-                Fr::mulSmall(tmp,bucket[j+255]-bucket[255-j],j);
+                Fr::mulSmall(tmp,bucket[j],j);
                 RZ[idx] +=tmp;
             }
             endq.Push(idx);
